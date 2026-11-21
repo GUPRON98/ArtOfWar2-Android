@@ -26,7 +26,7 @@ public class Graphics {
     private int color = 0xFF000000;
     private int transX = 0;
     private int transY = 0;
-    private Rect clipRect = new Rect(0, 0, 800, 800);
+    private Rect clipRect = new Rect(0, 0, 240, 400);
 
     public Graphics(Bitmap bitmap) {
         if (bitmap != null) {
@@ -90,19 +90,34 @@ public class Graphics {
     }
 
     public int getColor() {
-        return color & 0x00FFFFFF;
+        return this.color;
     }
 
-    public int getRedComponent() { return (color >> 16) & 0xFF; }
-    public int getGreenComponent() { return (color >> 8) & 0xFF; }
-    public int getBlueComponent() { return color & 0xFF; }
+    public int getDisplayColor(int color) {
+        return color;
+    }
+
+    public int getRedComponent() {
+        return (color >> 16) & 0xFF;
+    }
+
+    public int getGreenComponent() {
+        return (color >> 8) & 0xFF;
+    }
+
+    public int getBlueComponent() {
+        return color & 0xFF;
+    }
 
     public void setGrayScale(int value) {
         setColor(value, value, value);
     }
 
     public int getGrayScale() {
-        return (getRedComponent() + getGreenComponent() + getBlueComponent()) / 3;
+        int r = (color >> 16) & 0xFF;
+        int g = (color >> 8) & 0xFF;
+        int b = color & 0xFF;
+        return (r + g + b) / 3;
     }
 
     public void setFont(Font font) {
@@ -118,78 +133,101 @@ public class Graphics {
     }
 
     public void setClip(int x, int y, int width, int height) {
-        clipRect.set(x + transX, y + transY, x + transX + width, y + transY + height);
-        if (canvas != null) {
-            canvas.save();
-            canvas.restore();
-        }
+        int w = Math.max(0, width);
+        int h = Math.max(0, height);
+        this.clipRect.set(x + transX, y + transY, x + transX + w, y + transY + h);
     }
 
     public void clipRect(int x, int y, int width, int height) {
-        Rect r = new Rect(x + transX, y + transY, x + transX + width, y + transY + height);
-        clipRect.intersect(r);
+        int w = Math.max(0, width);
+        int h = Math.max(0, height);
+        this.clipRect.intersect(x + transX, y + transY, x + transX + w, y + transY + h);
     }
 
     public int getClipX() { return clipRect.left - transX; }
     public int getClipY() { return clipRect.top - transY; }
-    public int getClipWidth() { return clipRect.width(); }
-    public int getClipHeight() { return clipRect.height(); }
+    public int getClipWidth() { return Math.max(0, clipRect.width()); }
+    public int getClipHeight() { return Math.max(0, clipRect.height()); }
 
     public void drawLine(int x1, int y1, int x2, int y2) {
         if (canvas == null) return;
         paint.setStyle(Paint.Style.STROKE);
+        canvas.save();
+        canvas.clipRect(clipRect);
         canvas.drawLine(x1 + transX, y1 + transY, x2 + transX, y2 + transY, paint);
+        canvas.restore();
     }
 
     public void drawRect(int x, int y, int width, int height) {
         if (canvas == null || width < 0 || height < 0) return;
         paint.setStyle(Paint.Style.STROKE);
+        canvas.save();
+        canvas.clipRect(clipRect);
         canvas.drawRect(x + transX, y + transY, x + transX + width, y + transY + height, paint);
+        canvas.restore();
     }
 
     public void fillRect(int x, int y, int width, int height) {
         if (canvas == null || width <= 0 || height <= 0) return;
         paint.setStyle(Paint.Style.FILL);
+        canvas.save();
+        canvas.clipRect(clipRect);
         canvas.drawRect(x + transX, y + transY, x + transX + width, y + transY + height, paint);
+        canvas.restore();
     }
 
     public void drawRoundRect(int x, int y, int width, int height, int arcWidth, int arcHeight) {
         if (canvas == null) return;
         paint.setStyle(Paint.Style.STROKE);
         RectF r = new RectF(x + transX, y + transY, x + transX + width, y + transY + height);
+        canvas.save();
+        canvas.clipRect(clipRect);
         canvas.drawRoundRect(r, arcWidth, arcHeight, paint);
+        canvas.restore();
     }
 
     public void fillRoundRect(int x, int y, int width, int height, int arcWidth, int arcHeight) {
         if (canvas == null) return;
         paint.setStyle(Paint.Style.FILL);
         RectF r = new RectF(x + transX, y + transY, x + transX + width, y + transY + height);
+        canvas.save();
+        canvas.clipRect(clipRect);
         canvas.drawRoundRect(r, arcWidth, arcHeight, paint);
+        canvas.restore();
     }
 
     public void drawArc(int x, int y, int width, int height, int startAngle, int arcAngle) {
         if (canvas == null) return;
         paint.setStyle(Paint.Style.STROKE);
         RectF r = new RectF(x + transX, y + transY, x + transX + width, y + transY + height);
+        canvas.save();
+        canvas.clipRect(clipRect);
         canvas.drawArc(r, -startAngle, -arcAngle, false, paint);
+        canvas.restore();
     }
 
     public void fillArc(int x, int y, int width, int height, int startAngle, int arcAngle) {
         if (canvas == null) return;
         paint.setStyle(Paint.Style.FILL);
         RectF r = new RectF(x + transX, y + transY, x + transX + width, y + transY + height);
+        canvas.save();
+        canvas.clipRect(clipRect);
         canvas.drawArc(r, -startAngle, -arcAngle, true, paint);
+        canvas.restore();
     }
 
     public void fillTriangle(int x1, int y1, int x2, int y2, int x3, int y3) {
         if (canvas == null) return;
-        Path p = new Path();
+        android.graphics.Path p = new android.graphics.Path();
         p.moveTo(x1 + transX, y1 + transY);
         p.lineTo(x2 + transX, y2 + transY);
         p.lineTo(x3 + transX, y3 + transY);
         p.close();
         paint.setStyle(Paint.Style.FILL);
+        canvas.save();
+        canvas.clipRect(clipRect);
         canvas.drawPath(p, paint);
+        canvas.restore();
     }
 
     public void drawRGB(int[] rgbData, int offset, int scanlength, int x, int y, int width, int height, boolean processAlpha) {
@@ -200,12 +238,11 @@ public class Graphics {
                 rgbData[offset + i] |= 0xFF000000;
             }
         }
-        if (Math.random() < 0.05) {
-            int sample = rgbData[offset + width * (height / 2) + width / 2];
-            android.util.Log.i("AC_DRAW", "drawRGB: x=" + x + ", y=" + y + ", w=" + width + ", h=" + height + ", mid pixel=0x" + Integer.toHexString(sample));
-        }
         Bitmap b = Bitmap.createBitmap(rgbData, offset, scanlength, width, height, Bitmap.Config.ARGB_8888);
+        canvas.save();
+        canvas.clipRect(clipRect);
         canvas.drawBitmap(b, x + transX, y + transY, null);
+        canvas.restore();
     }
 
     public void drawString(String str, int x, int y, int anchor) {
@@ -227,7 +264,10 @@ public class Graphics {
         else if ((anchor & VCENTER) != 0) drawY += (strH / 2) - paint.descent();
         else if ((anchor & TOP) != 0) drawY += (int)(-paint.ascent());
 
+        canvas.save();
+        canvas.clipRect(clipRect);
         canvas.drawText(str, drawX, drawY, paint);
+        canvas.restore();
     }
 
     public void drawSubstring(String str, int offset, int len, int x, int y, int anchor) {
@@ -256,7 +296,18 @@ public class Graphics {
         if ((anchor & VCENTER) != 0) drawY -= b.getHeight() / 2;
         else if ((anchor & BOTTOM) != 0) drawY -= b.getHeight();
 
-        canvas.drawBitmap(b, drawX, drawY, null);
+        int imgW = b.getWidth();
+        int imgH = b.getHeight();
+        int left = Math.max(drawX, clipRect.left);
+        int top = Math.max(drawY, clipRect.top);
+        int right = Math.min(drawX + imgW, clipRect.right);
+        int bottom = Math.min(drawY + imgH, clipRect.bottom);
+
+        if (left < right && top < bottom) {
+            Rect srcRect = new Rect(left - drawX, top - drawY, right - drawX, bottom - drawY);
+            Rect destRect = new Rect(left, top, right, bottom);
+            canvas.drawBitmap(b, srcRect, destRect, null);
+        }
     }
 
     public void drawRegion(Image src, int x_src, int y_src, int width, int height,
@@ -281,9 +332,19 @@ public class Graphics {
         else if ((anchor & BOTTOM) != 0) destY -= outH;
 
         if (transform == 0) {
-            Rect srcRect = new Rect(x_src, y_src, x_src + width, y_src + height);
-            Rect destRect = new Rect(destX, destY, destX + width, destY + height);
-            canvas.drawBitmap(srcBmp, srcRect, destRect, null);
+            int left = Math.max(destX, clipRect.left);
+            int top = Math.max(destY, clipRect.top);
+            int right = Math.min(destX + width, clipRect.right);
+            int bottom = Math.min(destY + height, clipRect.bottom);
+            if (left < right && top < bottom) {
+                int sx = x_src + (left - destX);
+                int sy = y_src + (top - destY);
+                int sw = right - left;
+                int sh = bottom - top;
+                Rect srcRect = new Rect(sx, sy, sx + sw, sy + sh);
+                Rect destRect = new Rect(left, top, right, bottom);
+                canvas.drawBitmap(srcBmp, srcRect, destRect, null);
+            }
             return;
         }
 
@@ -328,6 +389,7 @@ public class Graphics {
         m.postTranslate(destX, destY);
 
         canvas.save();
+        canvas.clipRect(clipRect);
         canvas.clipRect(destX, destY, destX + outW, destY + outH);
         canvas.drawBitmap(srcBmp, m, null);
         canvas.restore();
