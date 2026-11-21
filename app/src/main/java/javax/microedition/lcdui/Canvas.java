@@ -59,9 +59,9 @@ public abstract class Canvas extends Displayable {
     }
 
     static {
-        // Native Samsung S8000 Portrait Engine: 240x800 Double Buffered
-        frontBitmap = Bitmap.createBitmap(240, 800, Bitmap.Config.ARGB_8888);
-        backBitmap = Bitmap.createBitmap(240, 800, Bitmap.Config.ARGB_8888);
+        // Native Samsung S8000 QVGA Engine: 240x320 Double Buffered
+        frontBitmap = Bitmap.createBitmap(240, 320, Bitmap.Config.ARGB_8888);
+        backBitmap = Bitmap.createBitmap(240, 320, Bitmap.Config.ARGB_8888);
         displayBitmap = frontBitmap;
         displayGraphics = new Graphics(backBitmap);
     }
@@ -131,7 +131,7 @@ public abstract class Canvas extends Displayable {
     }
 
     public int getHeight() {
-        return 800;
+        return 320;
     }
 
     public boolean hasPointerEvents() {

@@ -1,15 +1,20 @@
 package com.herocraft.artofwar2;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.LinearGradient;
 import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.graphics.Shader;
+import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Vibrator;
@@ -21,10 +26,9 @@ import android.view.SurfaceView;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
+import android.widget.Toast;
 
 import java.io.File;
-import java.util.HashMap;
-import java.util.Map;
 
 import javax.microedition.lcdui.ResourceLoader;
 
@@ -35,6 +39,8 @@ public class MainActivity extends Activity {
 
     // Orientation: 0 = Landscape, 1 = Portrait (Default), 2 = Auto Sensor
     private int orientationMode = 1;
+    // Display Mode: 1 = Fullscreen Stretch (Default), 0 = Fit Aspect Centered (240x320)
+    private int displayMode = 1;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -42,6 +48,7 @@ public class MainActivity extends Activity {
 
         SharedPreferences sp = getSharedPreferences("AOW2_PREFS", MODE_PRIVATE);
         orientationMode = sp.getInt("orientation_mode", 1);
+        displayMode = sp.getInt("display_mode", 1);
         applyOrientation(orientationMode);
 
         // Fullscreen & Keep Screen On
@@ -56,6 +63,8 @@ public class MainActivity extends Activity {
         }
 
         ResourceLoader.appContext = getApplicationContext();
+        System.setProperty("microedition.locale", "en");
+        System.setProperty("microedition.platform", "SamsungS8000");
 
         // Cleanup corrupted 0-byte RMS files if any
         try {
@@ -73,18 +82,27 @@ public class MainActivity extends Activity {
             }
         } catch (Throwable ignored) {}
 
-        // Initialize aow2 MIDlet instance
-        try {
-            Class<?> midletClass = Class.forName("aow2");
-            midlet = (javax.microedition.midlet.MIDlet) midletClass.getDeclaredConstructor().newInstance();
-            midletClass.getMethod("startApp").invoke(midlet);
-            Log.i(TAG, "aow2 MIDlet started successfully!");
-        } catch (Throwable t) {
-            Log.e(TAG, "Error starting aow2 MIDlet", t);
-        }
-
         gameView = new GameView(this);
         setContentView(gameView);
+
+        // Start aow2 MIDlet in background thread
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Thread.sleep(150);
+                    Log.i(TAG, "Starting aow2 MIDlet...");
+                    Class<?> midletClass = Class.forName("aow2");
+                    midlet = (javax.microedition.midlet.MIDlet) midletClass.getDeclaredConstructor().newInstance();
+                    java.lang.reflect.Method startAppMethod = midletClass.getMethod("startApp");
+                    startAppMethod.setAccessible(true);
+                    startAppMethod.invoke(midlet);
+                    Log.i(TAG, "aow2 MIDlet started successfully!");
+                } catch (Throwable t) {
+                    Log.e(TAG, "Error starting aow2 MIDlet", t);
+                }
+            }
+        }).start();
     }
 
     public void applyOrientation(int mode) {
@@ -100,39 +118,22 @@ public class MainActivity extends Activity {
                 .putInt("orientation_mode", orientationMode).apply();
     }
 
-    public int cycleOrientation() {
-        int next = (orientationMode + 1) % 3;
-        applyOrientation(next);
-        return next;
-    }
-
-    public String getOrientationDescription() {
-        switch (orientationMode) {
-            case 0: return "LANDSCAPE (Layar Lebar)";
-            case 1: return "PORTRAIT (Layar Tegak)";
-            case 2: return "OTOMATIS (Sensor Putar)";
-            default: return "PORTRAIT";
-        }
-    }
-
     @Override
     protected void onResume() {
         super.onResume();
         hideSystemUI();
-        if (midlet != null) {
-            try {
-                midlet.getClass().getMethod("startApp").invoke(midlet);
-            } catch (Throwable ignored) {}
-        }
     }
 
-    @Override
-    protected void onPause() {
-        super.onPause();
-        if (midlet != null) {
-            try {
-                midlet.getClass().getMethod("pauseApp").invoke(midlet);
-            } catch (Throwable ignored) {}
+    private void hideSystemUI() {
+        View decorView = getWindow().getDecorView();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            decorView.setSystemUiVisibility(
+                    View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                            | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                            | View.SYSTEM_UI_FLAG_FULLSCREEN
+                            | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
         }
     }
 
@@ -141,63 +142,182 @@ public class MainActivity extends Activity {
         super.onDestroy();
         if (midlet != null) {
             try {
-                midlet.getClass().getMethod("destroyApp", boolean.class).invoke(midlet, true);
+                java.lang.reflect.Method m = midlet.getClass().getMethod("destroyApp", boolean.class);
+                m.setAccessible(true);
+                m.invoke(midlet, true);
             } catch (Throwable ignored) {}
         }
     }
 
     @Override
-    public void onWindowFocusChanged(boolean hasFocus) {
-        super.onWindowFocusChanged(hasFocus);
-        if (hasFocus) {
-            hideSystemUI();
-        }
+    public void onBackPressed() {
+        showMenuDialog();
     }
 
-    private void hideSystemUI() {
-        getWindow().getDecorView().setSystemUiVisibility(
-                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                | View.SYSTEM_UI_FLAG_FULLSCREEN
-                | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-        );
+    public void showMenuDialog() {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                String[] options = new String[]{
+                        "⚡ Buka Menu Cheat",
+                        "📐 Mode Tampilan: " + (displayMode == 1 ? "Layar Penuh (Stretch)" : "Aspek Asli (240x320)"),
+                        "🔄 Orientasi Layar: " + (orientationMode == 1 ? "Tegak (Portrait)" : (orientationMode == 0 ? "Mendatar (Landscape)" : "Auto Sensor")),
+                        "🎯 FPS Limit: " + javax.microedition.lcdui.Canvas.getFpsDescription(),
+                        "🚪 Keluar Game"
+                };
+
+                AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this, AlertDialog.THEME_DEVICE_DEFAULT_DARK);
+                builder.setTitle("⚙️ PENGATURAN ART OF WAR 2");
+                builder.setItems(options, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        switch (which) {
+                            case 0:
+                                showCheatDialog();
+                                return;
+                            case 1:
+                                displayMode = (displayMode + 1) % 2;
+                                getSharedPreferences("AOW2_PREFS", MODE_PRIVATE).edit()
+                                        .putInt("display_mode", displayMode).apply();
+                                if (gameView != null) {
+                                    gameView.setDisplayMode(displayMode);
+                                }
+                                Toast.makeText(MainActivity.this, displayMode == 1 ? "Layar Penuh (Stretch)" : "Aspek Asli (240x320)", Toast.LENGTH_SHORT).show();
+                                break;
+                            case 2:
+                                orientationMode = (orientationMode + 1) % 3;
+                                applyOrientation(orientationMode);
+                                break;
+                            case 3:
+                                int nextFps = javax.microedition.lcdui.Canvas.cycleFps();
+                                Toast.makeText(MainActivity.this, "FPS: " + nextFps, Toast.LENGTH_SHORT).show();
+                                break;
+                            case 4:
+                                finish();
+                                break;
+                        }
+                        hideSystemUI();
+                    }
+                });
+                builder.setNegativeButton("Kembali", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        dialog.dismiss();
+                        hideSystemUI();
+                    }
+                });
+                builder.show();
+            }
+        });
     }
 
-    @Override
-    public void onConfigurationChanged(android.content.res.Configuration newConfig) {
-        super.onConfigurationChanged(newConfig);
-        hideSystemUI();
-        if (gameView != null) {
-            gameView.post(new Runnable() {
-                @Override
-                public void run() {
-                    gameView.layoutControls(gameView.getWidth(), gameView.getHeight());
+    public void showCheatDialog() {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                String[] cheats = new String[]{
+                        "💰 +10.000 Kredit / Uang",
+                        "💰 +50.000 Mega Kredit (Max)",
+                        "🛡️ Pasukan & Bangunan Kebal (God Mode)",
+                        "🗺️ Buka Seluruh Peta (No Fog of War)",
+                        "🏆 Menang Misi Seketika (Auto Win)"
+                };
+
+                AlertDialog.Builder builder = new AlertDialog.Builder(MainActivity.this, AlertDialog.THEME_DEVICE_DEFAULT_DARK);
+                builder.setTitle("⚡ MENU CHEAT ART OF WAR 2");
+                builder.setItems(cheats, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        switch (which) {
+                            case 0:
+                                dispatchCheat(new int[]{51, 55, 55, 57, 55}, "💰 +10.000 Kredit Ditambahkan!");
+                                break;
+                            case 1:
+                                dispatchMultiCheat(new int[]{51, 55, 55, 57, 55}, 5, "💰 +50.000 Mega Kredit Ditambahkan!");
+                                break;
+                            case 2:
+                                dispatchCheat(new int[]{51, 55, 55, 57, 49}, "🛡️ Pasukan & Bangunan Kebal (God Mode) Aktif!");
+                                break;
+                            case 3:
+                                dispatchCheat(new int[]{51, 55, 55, 57, 51}, "🗺️ Seluruh Peta Berhasil Dibuka!");
+                                break;
+                            case 4:
+                                dispatchCheat(new int[]{51, 55, 55, 57, 57}, "🏆 Misi Berhasil Dimenangkan!");
+                                break;
+                        }
+                        hideSystemUI();
+                    }
+                });
+                builder.setNegativeButton("Tutup", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        dialog.dismiss();
+                        hideSystemUI();
+                    }
+                });
+                builder.show();
+            }
+        });
+    }
+
+    public void dispatchCheat(final int[] sequence, final String successMsg) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                Toast.makeText(MainActivity.this, successMsg, Toast.LENGTH_SHORT).show();
+            }
+        });
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                sendSequence(sequence);
+            }
+        }).start();
+    }
+
+    public void dispatchMultiCheat(final int[] sequence, final int repeatCount, final String successMsg) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                Toast.makeText(MainActivity.this, successMsg, Toast.LENGTH_SHORT).show();
+            }
+        });
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                for (int i = 0; i < repeatCount; i++) {
+                    sendSequence(sequence);
+                    try {
+                        Thread.sleep(80);
+                    } catch (InterruptedException ignored) {}
                 }
-            });
+            }
+        }).start();
+    }
+
+    private void sendSequence(int[] sequence) {
+        javax.microedition.lcdui.Canvas c = javax.microedition.lcdui.Canvas.currentInstance;
+        if (c == null) return;
+        for (int key : sequence) {
+            try {
+                c.keyPressed(key);
+                Thread.sleep(40);
+                c.keyReleased(key);
+                Thread.sleep(40);
+            } catch (InterruptedException ignored) {}
         }
     }
 
     @Override
     public boolean onKeyDown(int keyCode, KeyEvent event) {
         if (keyCode == KeyEvent.KEYCODE_BACK) {
-            if (gameView != null) {
-                if (gameView.isSettingModalOpen()) {
-                    gameView.closeSettingModal();
-                    return true;
-                } else {
-                    gameView.openSettingModal();
-                    return true;
-                }
-            }
-            sendKeyToGame(-6, true);
+            showMenuDialog();
             return true;
         }
 
-        int mapped = mapAndroidKey(keyCode);
-        if (mapped != 0) {
-            sendKeyToGame(mapped, true);
+        int j2meKey = translateKeyCode(keyCode);
+        if (j2meKey != 0) {
+            sendKeyToGame(j2meKey, true);
             return true;
         }
         return super.onKeyDown(keyCode, event);
@@ -205,41 +325,45 @@ public class MainActivity extends Activity {
 
     @Override
     public boolean onKeyUp(int keyCode, KeyEvent event) {
-        int mapped = mapAndroidKey(keyCode);
-        if (mapped != 0) {
-            sendKeyToGame(mapped, false);
+        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            return true;
+        }
+
+        int j2meKey = translateKeyCode(keyCode);
+        if (j2meKey != 0) {
+            sendKeyToGame(j2meKey, false);
             return true;
         }
         return super.onKeyUp(keyCode, event);
     }
 
-    private int mapAndroidKey(int keyCode) {
+    private int translateKeyCode(int keyCode) {
         switch (keyCode) {
             case KeyEvent.KEYCODE_DPAD_UP:
             case KeyEvent.KEYCODE_W:
-                return 50; // '2' UP
+                return 50; // UP (Key 2)
             case KeyEvent.KEYCODE_DPAD_DOWN:
             case KeyEvent.KEYCODE_S:
-                return 56; // '8' DOWN
+                return 56; // DOWN (Key 8)
             case KeyEvent.KEYCODE_DPAD_LEFT:
             case KeyEvent.KEYCODE_A:
-                return 52; // '4' LEFT
+                return 52; // KIRI (Key 4)
             case KeyEvent.KEYCODE_DPAD_RIGHT:
             case KeyEvent.KEYCODE_D:
-                return 54; // '6' RIGHT
+                return 54; // KANAN (Key 6)
             case KeyEvent.KEYCODE_DPAD_CENTER:
             case KeyEvent.KEYCODE_ENTER:
             case KeyEvent.KEYCODE_SPACE:
             case KeyEvent.KEYCODE_BUTTON_A:
-                return 53; // '5' ACTION / SELECT
-            case KeyEvent.KEYCODE_BUTTON_B:
-            case KeyEvent.KEYCODE_K:
-                return 42; // '*'
-            case KeyEvent.KEYCODE_BUTTON_X:
-            case KeyEvent.KEYCODE_J:
-                return 35; // '#'
+                return 53; // FIRE / SELECT (Key 5)
+            case KeyEvent.KEYCODE_Q:
             case KeyEvent.KEYCODE_MENU:
-                return -6; // LSK (Menu)
+            case KeyEvent.KEYCODE_BUTTON_X:
+                return -6; // LSK
+            case KeyEvent.KEYCODE_E:
+            case KeyEvent.KEYCODE_ESCAPE:
+            case KeyEvent.KEYCODE_BUTTON_B:
+                return -7; // RSK
             case KeyEvent.KEYCODE_0: return 48;
             case KeyEvent.KEYCODE_1: return 49;
             case KeyEvent.KEYCODE_2: return 50;
@@ -252,24 +376,32 @@ public class MainActivity extends Activity {
             case KeyEvent.KEYCODE_9: return 57;
             case KeyEvent.KEYCODE_STAR: return 42;
             case KeyEvent.KEYCODE_POUND: return 35;
-            default:
-                return 0;
+            default: return 0;
         }
     }
 
-    private void sendKeyToGame(int j2meKey, boolean pressed) {
-        javax.microedition.lcdui.Canvas c = javax.microedition.lcdui.Canvas.currentInstance;
+    public void sendKeyToGame(final int keyCode, final boolean isDown) {
+        final javax.microedition.lcdui.Canvas c = javax.microedition.lcdui.Canvas.currentInstance;
         if (c != null) {
-            if (pressed) {
-                c.keyPressed(j2meKey);
-            } else {
-                c.keyReleased(j2meKey);
-            }
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        if (isDown) {
+                            c.keyPressed(keyCode);
+                        } else {
+                            c.keyReleased(keyCode);
+                        }
+                    } catch (Throwable t) {
+                        Log.e(TAG, "Error dispatching key " + keyCode, t);
+                    }
+                }
+            }).start();
         }
     }
 
     // =========================================================================
-    // GAME VIEW: 480x800 NATIVE WVGA TACTICAL RTS ENGINE
+    // GameView: Tactical RTS Canvas + Themed Floating Pill Buttons + Smart Touch
     // =========================================================================
     public static class GameView extends SurfaceView implements SurfaceHolder.Callback, Runnable {
         private final MainActivity activity;
@@ -278,421 +410,264 @@ public class MainActivity extends Activity {
         private volatile boolean running = false;
         private Vibrator vibrator;
 
-        // Viewports & Transforms
-        private final RectF rectGame = new RectF();
         private final Matrix drawMatrix = new Matrix();
+        private final RectF rectGame = new RectF();
 
-        // Settings / Modal
-        private boolean showSettingModal = false;
-        private boolean hideFloatingBtn = false;
-        private boolean showVirtualKeypad = false;
-        private int displayMode = 1; // 0 = Fit Aspect Ratio, 1 = Fullscreen Stretch (Default)
+        private int displayMode = 1; // 1 = Fullscreen Stretch, 0 = Fit Aspect Centered
+        private int gameTouchPointerId = -1;
 
-        // Rectangles
+        // Floating Buttons
+        private final RectF rectCheatBtn = new RectF();
         private final RectF rectSettingBtn = new RectF();
-        private final RectF rectModalBox = new RectF();
-        private final RectF rectCheatMoney = new RectF();
-        private final RectF rectCheatGod = new RectF();
-        private final RectF rectCheatMap = new RectF();
-        private final RectF rectCheatWin = new RectF();
-        private final RectF rectToggleKeypad = new RectF();
-        private final RectF rectFpsCycle = new RectF();
-        private final RectF rectOrientationCycle = new RectF();
-        private final RectF rectToggleStretch = new RectF();
-        private final RectF rectToggleBtnVisibility = new RectF();
-        private final RectF rectModalClose = new RectF();
+        private final RectF innerRect = new RectF();
+        private final RectF shineRect = new RectF();
 
-        // Virtual Keypad Buttons
-        public static class VKey {
-            int keyCode;
-            String label;
-            RectF bounds = new RectF();
-            boolean pressed = false;
-            int color;
+        // Themed Paints
+        private Paint blackPaint;
+        private Paint bitmapPaint;
+        private Paint cheatBgPaint;
+        private Paint settingBgPaint;
+        private Paint outerGoldBorderPaint;
+        private Paint innerGoldBorderPaint;
+        private Paint rivetPaint;
+        private Paint shinePaint;
+        private Paint textPaint;
 
-            public VKey(int keyCode, String label, int color) {
-                this.keyCode = keyCode;
-                this.label = label;
-                this.color = color;
-            }
-        }
-
-        private final VKey[] vKeys = new VKey[]{
-                new VKey(-6, "LSK", 0xFF27AE60),
-                new VKey(-7, "RSK", 0xFF2980B9),
-                new VKey(49, "1", 0xFF34495E),
-                new VKey(50, "2▲", 0xFF34495E),
-                new VKey(51, "3", 0xFF34495E),
-                new VKey(52, "4◀", 0xFF34495E),
-                new VKey(53, "5●", 0xFFE67E22),
-                new VKey(54, "6▶", 0xFF34495E),
-                new VKey(55, "7", 0xFF34495E),
-                new VKey(56, "8▼", 0xFF34495E),
-                new VKey(57, "9", 0xFF34495E),
-                new VKey(48, "0", 0xFF34495E),
-        };
-        private final Map<Integer, VKey> activeVKeyPointers = new HashMap<>();
-
-        // Notification Toast
-        private String toastMessage = null;
-        private long toastTime = 0;
-
-        // Paints - Military RTS Theme (Tactical Khaki / Carbon / Gold / Combat Green)
-        private final Paint blackPaint = new Paint();
-        private final Paint bitmapPaint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
-        private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint settingBtnPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint settingBorderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint modalBgPaint = new Paint();
-        private final Paint modalBoxPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint modalHeaderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint modalItemPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint toastBgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint keypadBgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint keyNormalPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint keyPressedPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint keyBorderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private boolean cheatPressed = false;
+        private boolean settingPressed = false;
 
         public GameView(MainActivity activity) {
             super(activity);
             this.activity = activity;
             this.holder = getHolder();
             this.holder.addCallback(this);
-            this.vibrator = (Vibrator) activity.getSystemService(Context.VIBRATOR_SERVICE);
-            initThemePaints();
-        }
 
-        private void initThemePaints() {
-            blackPaint.setColor(0xFF0D1117);
+            SharedPreferences sp = activity.getSharedPreferences("AOW2_PREFS", Context.MODE_PRIVATE);
+            this.displayMode = sp.getInt("display_mode", 1);
 
-            textPaint.setColor(0xFFF1C40F);
-            textPaint.setTextSize(20f);
+            try {
+                this.vibrator = (Vibrator) activity.getSystemService(Context.VIBRATOR_SERVICE);
+            } catch (Throwable ignored) {}
+
+            blackPaint = new Paint();
+            blackPaint.setColor(0xFF0B1015);
+
+            bitmapPaint = new Paint();
+            bitmapPaint.setFilterBitmap(true);
+            bitmapPaint.setAntiAlias(true);
+
+            // Tactical Combat Crimson Plaque for Cheat
+            cheatBgPaint = new Paint();
+            cheatBgPaint.setStyle(Paint.Style.FILL);
+            cheatBgPaint.setAntiAlias(true);
+
+            // Military Armor / Dark Olive Steel Plaque for Opsi
+            settingBgPaint = new Paint();
+            settingBgPaint.setStyle(Paint.Style.FILL);
+            settingBgPaint.setAntiAlias(true);
+
+            // Outer Combat Amber/Gold Border
+            outerGoldBorderPaint = new Paint();
+            outerGoldBorderPaint.setColor(0xFFF39C12); // Tactical Amber Gold
+            outerGoldBorderPaint.setStyle(Paint.Style.STROKE);
+            outerGoldBorderPaint.setStrokeWidth(2.2f);
+            outerGoldBorderPaint.setAntiAlias(true);
+
+            // Inner Military Brass Inset Border
+            innerGoldBorderPaint = new Paint();
+            innerGoldBorderPaint.setColor(0x88FAD7A0); // Warm brass highlight
+            innerGoldBorderPaint.setStyle(Paint.Style.STROKE);
+            innerGoldBorderPaint.setStrokeWidth(1.0f);
+            innerGoldBorderPaint.setAntiAlias(true);
+
+            // Tactical Corner Studs / Rivets
+            rivetPaint = new Paint();
+            rivetPaint.setColor(0xFFFFD700); // Combat Gold Rivets
+            rivetPaint.setStyle(Paint.Style.FILL);
+            rivetPaint.setAntiAlias(true);
+
+            // Specular Top Shine
+            shinePaint = new Paint();
+            shinePaint.setColor(0x24FFFFFF);
+            shinePaint.setStyle(Paint.Style.FILL);
+            shinePaint.setAntiAlias(true);
+
+            // Embossed Military Font
+            textPaint = new Paint();
+            textPaint.setColor(0xFFFFF2D0); // Ivory Tactical Gold
+            textPaint.setTextSize(16.5f);
             textPaint.setTextAlign(Paint.Align.CENTER);
+            textPaint.setTypeface(Typeface.create(Typeface.SERIF, Typeface.BOLD));
             textPaint.setFakeBoldText(true);
-
-            // Floating Pill: Military Carbon Armor with Combat Gold Border
-            settingBtnPaint.setColor(0xDD1B2631);
-            settingBtnPaint.setStyle(Paint.Style.FILL);
-
-            settingBorderPaint.setColor(0xFFF39C12);
-            settingBorderPaint.setStyle(Paint.Style.STROKE);
-            settingBorderPaint.setStrokeWidth(2.2f);
-
-            modalBgPaint.setColor(0xDD000000);
-
-            modalBoxPaint.setColor(0xF617202A);
-            modalBoxPaint.setStyle(Paint.Style.FILL);
-
-            modalHeaderPaint.setColor(0xFFB7950B);
-            modalHeaderPaint.setStyle(Paint.Style.FILL);
-
-            modalItemPaint.setColor(0xEE212F3D);
-            modalItemPaint.setStyle(Paint.Style.FILL);
-
-            toastBgPaint.setColor(0xEE1A252F);
-            toastBgPaint.setStyle(Paint.Style.FILL);
-
-            keypadBgPaint.setColor(0xCC0E141B);
-            keypadBgPaint.setStyle(Paint.Style.FILL);
-
-            keyNormalPaint.setStyle(Paint.Style.FILL);
-
-            keyPressedPaint.setColor(0xFFE67E22);
-            keyPressedPaint.setStyle(Paint.Style.FILL);
-
-            keyBorderPaint.setColor(0x88F1C40F);
-            keyBorderPaint.setStyle(Paint.Style.STROKE);
-            keyBorderPaint.setStrokeWidth(1.5f);
+            textPaint.setAntiAlias(true);
+            textPaint.setShadowLayer(3.5f, 1.5f, 1.5f, 0xFF000000); // Carved shadow
         }
 
-        public boolean isSettingModalOpen() {
-            return showSettingModal;
+        public void setDisplayMode(int mode) {
+            this.displayMode = mode;
+            layoutGame(getWidth(), getHeight());
         }
 
-        public void openSettingModal() {
-            showSettingModal = true;
-            vibrate(30);
-        }
-
-        public void closeSettingModal() {
-            showSettingModal = false;
-            vibrate(20);
-        }
-
-        private void vibrate(long ms) {
+        private void vibrate(int ms) {
             try {
                 if (vibrator != null) vibrator.vibrate(ms);
             } catch (Throwable ignored) {}
         }
 
-        private void showToast(String msg) {
-            toastMessage = msg;
-            toastTime = System.currentTimeMillis();
-            vibrate(25);
-        }
-
         @Override
         public void surfaceCreated(SurfaceHolder holder) {
             running = true;
-            renderThread = new Thread(this, "AOW2_RenderThread");
+            renderThread = new Thread(this, "AOW2RenderLoop");
             renderThread.start();
         }
 
         @Override
         public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-            layoutControls(width, height);
+            layoutGame(width, height);
         }
 
         @Override
         public void surfaceDestroyed(SurfaceHolder holder) {
             running = false;
             try {
-                if (renderThread != null) renderThread.join(500);
+                if (renderThread != null) {
+                    renderThread.join(500);
+                }
             } catch (InterruptedException ignored) {}
         }
 
-        public void layoutControls(int w, int h) {
+        public void layoutGame(int w, int h) {
             if (w <= 0 || h <= 0) return;
+            drawMatrix.reset();
 
-            // Native Samsung S8000 Portrait: 240x800
+            // Native Samsung S8000 QVGA resolution: 240x320
             float baseW = 240f;
-            float baseH = 800f;
+            float baseH = 320f;
 
-            if (displayMode == 1) {
-                // Fullscreen Stretch
-                rectGame.set(0f, 0f, (float) w, (float) h);
-                drawMatrix.reset();
-                drawMatrix.postScale((float) w / baseW, (float) h / baseH);
-            } else {
-                // Aspect Fit (centered)
+            if (displayMode == 1) { // Fullscreen Stretch (Default)
+                float sx = (float) w / baseW;
+                float sy = (float) h / baseH;
+                drawMatrix.setScale(sx, sy);
+                rectGame.set(0, 0, w, h);
+            } else { // Fit Aspect Centered (240x320)
                 float scale = Math.min((float) w / baseW, (float) h / baseH);
-                float gw = baseW * scale;
-                float gh = baseH * scale;
-                float gx = (w - gw) / 2f;
-                float gy = (h - gh) / 2f;
-                rectGame.set(gx, gy, gx + gw, gy + gh);
-                drawMatrix.reset();
-                drawMatrix.postScale(scale, scale);
-                drawMatrix.postTranslate(gx, gy);
+                float dw = baseW * scale;
+                float dh = baseH * scale;
+                float dx = (w - dw) / 2f;
+                float dy = (h - dh) / 2f;
+                drawMatrix.setScale(scale, scale);
+                drawMatrix.postTranslate(dx, dy);
+                rectGame.set(dx, dy, dx + dw, dy + dh);
             }
 
-            // In-Game Setting Floating Pill Button (Top Right corner)
-            float btnW = 140f;
-            float btnH = 36f;
-            float pad = 12f;
-            rectSettingBtn.set(w - btnW - pad, pad, w - pad, pad + btnH);
+            // Floating Buttons: CHEAT on Left, OPSI on Right (Safely below camera notch)
+            float btnW = 98f;
+            float btnH = 38f;
+            float sMarginX = 16f;
+            float sMarginY = 48f;
 
-            // Modal Layout
-            float mw = Math.min(w * 0.90f, 640f);
-            float mh = Math.min(h * 0.92f, 720f);
-            float mx = (w - mw) / 2f;
-            float my = (h - mh) / 2f;
-            rectModalBox.set(mx, my, mx + mw, my + mh);
+            // CHEAT on Top-Left
+            rectCheatBtn.set(sMarginX, sMarginY, sMarginX + btnW, sMarginY + btnH);
 
-            float padM = 16f;
-            float itemH = Math.min(42f, (mh - 120f) / 10.5f);
-            float gap = Math.min(6f, (mh - 120f - itemH * 10f) / 9f);
-            float curY = my + 50f;
+            // OPSI on Top-Right
+            rectSettingBtn.set(w - btnW - sMarginX, sMarginY, w - sMarginX, sMarginY + btnH);
 
-            rectCheatMoney.set(mx + padM, curY, mx + mw - padM, curY + itemH); curY += itemH + gap;
-            rectCheatGod.set(mx + padM, curY, mx + mw - padM, curY + itemH); curY += itemH + gap;
-            rectCheatMap.set(mx + padM, curY, mx + mw - padM, curY + itemH); curY += itemH + gap;
-            rectCheatWin.set(mx + padM, curY, mx + mw - padM, curY + itemH); curY += itemH + gap;
-            rectToggleKeypad.set(mx + padM, curY, mx + mw - padM, curY + itemH); curY += itemH + gap;
-            rectFpsCycle.set(mx + padM, curY, mx + mw - padM, curY + itemH); curY += itemH + gap;
-            rectOrientationCycle.set(mx + padM, curY, mx + mw - padM, curY + itemH); curY += itemH + gap;
-            rectToggleStretch.set(mx + padM, curY, mx + mw - padM, curY + itemH); curY += itemH + gap;
-            rectToggleBtnVisibility.set(mx + padM, curY, mx + mw - padM, curY + itemH); curY += itemH + gap;
+            // Apply Military RTS Gradients
+            // Cheat: Tactical Red Lacquer (Combat alert)
+            cheatBgPaint.setShader(new LinearGradient(
+                    rectCheatBtn.left, rectCheatBtn.top,
+                    rectCheatBtn.left, rectCheatBtn.bottom,
+                    0xEE4B1515, 0xEE220808,
+                    Shader.TileMode.CLAMP));
 
-            rectModalClose.set(mx + padM * 2f, my + mh - 46f, mx + mw - padM * 2f, my + mh - 10f);
-
-            // Virtual Keypad Layout (Overlay at bottom if enabled)
-            float kw = Math.min(w * 0.96f, 480f);
-            float kh = 160f;
-            float kx = (w - kw) / 2f;
-            float ky = h - kh - 10f;
-            float btnKW = (kw - 24f) / 6f;
-            float btnKH = (kh - 18f) / 2f;
-
-            // Row 1: LSK, 1, 2, 3, 4, 5
-            for (int i = 0; i < 6; i++) {
-                float bx = kx + 4f + i * (btnKW + 4f);
-                float by = ky + 4f;
-                vKeys[i == 0 ? 0 : (i + 1)].bounds.set(bx, by, bx + btnKW, by + btnKH);
-            }
-            // Row 2: RSK, 6, 7, 8, 9, 0
-            for (int i = 0; i < 6; i++) {
-                float bx = kx + 4f + i * (btnKW + 4f);
-                float by = ky + 8f + btnKH;
-                int idx = (i == 0) ? 1 : (i + 6);
-                if (idx < vKeys.length) {
-                    vKeys[idx].bounds.set(bx, by, bx + btnKW, by + btnKH);
-                }
-            }
+            // Opsi: Military Steel Armor / Dark Olive Camo
+            settingBgPaint.setShader(new LinearGradient(
+                    rectSettingBtn.left, rectSettingBtn.top,
+                    rectSettingBtn.left, rectSettingBtn.bottom,
+                    0xEE1E2C38, 0xEE101920,
+                    Shader.TileMode.CLAMP));
         }
 
         @Override
         public void run() {
-            long lastDrawnFrame = -1;
             while (running) {
-                long currentFrame = javax.microedition.lcdui.Canvas.frameCounter;
+                Canvas c = null;
+                try {
+                    c = holder.lockCanvas();
+                    if (c != null) {
+                        c.drawRect(0, 0, getWidth(), getHeight(), blackPaint);
 
-                if (currentFrame != lastDrawnFrame || showSettingModal || (toastMessage != null && System.currentTimeMillis() - toastTime < 2500)) {
-                    Canvas canvas = null;
-                    try {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            try {
-                                canvas = holder.lockHardwareCanvas();
-                            } catch (Throwable ignored) {
-                                canvas = holder.lockCanvas();
+                        // Draw Native Game Framebuffer
+                        Bitmap bm = javax.microedition.lcdui.Canvas.displayBitmap;
+                        if (bm != null) {
+                            synchronized (javax.microedition.lcdui.Canvas.swapLock) {
+                                c.drawBitmap(bm, drawMatrix, bitmapPaint);
                             }
-                        } else {
-                            canvas = holder.lockCanvas();
                         }
 
-                        if (canvas != null) {
-                            render(canvas);
-                            lastDrawnFrame = currentFrame;
-                        }
-                    } catch (Throwable t) {
-                        Log.e(TAG, "Render loop exception", t);
-                    } finally {
-                        if (canvas != null) {
-                            try {
-                                holder.unlockCanvasAndPost(canvas);
-                            } catch (Exception ignored) {}
-                        }
+                        // Draw Floating CHEAT & OPSI Buttons
+                        drawButtons(c);
+                    }
+                } catch (Throwable t) {
+                    Log.e(TAG, "Render loop error", t);
+                } finally {
+                    if (c != null) {
+                        try {
+                            holder.unlockCanvasAndPost(c);
+                        } catch (Throwable ignored) {}
                     }
                 }
 
                 try {
-                    Thread.sleep(8);
+                    Thread.sleep(12); // ~80 FPS display refresh sync
                 } catch (InterruptedException ignored) {}
             }
         }
 
-        private void render(Canvas c) {
-            int w = getWidth();
-            int h = getHeight();
-            c.drawRect(0, 0, w, h, blackPaint);
+        private void drawButtons(Canvas c) {
+            // CHEAT Button (Tactical Red & Gold Plaque on Left)
+            drawThemedPlaque(c, rectCheatBtn, "⚡ CHEAT", cheatBgPaint, cheatPressed);
 
-            // Draw J2ME Canvas Frame (480x800 Double-Buffered)
-            Bitmap frame;
-            synchronized (javax.microedition.lcdui.Canvas.swapLock) {
-                frame = javax.microedition.lcdui.Canvas.frontBitmap;
-            }
-            if (frame != null && !frame.isRecycled()) {
-                c.drawBitmap(frame, drawMatrix, bitmapPaint);
-            }
-
-            // Draw Virtual Keypad (if enabled)
-            if (showVirtualKeypad) {
-                drawKeypad(c);
-            }
-
-            // Draw Floating Setting Button
-            if (!hideFloatingBtn) {
-                drawSettingButton(c);
-            }
-
-            // Draw Toast notification
-            if (toastMessage != null && System.currentTimeMillis() - toastTime < 2500) {
-                drawToast(c, toastMessage);
-            }
-
-            // Draw Setting & Cheat Modal
-            if (showSettingModal) {
-                drawSettingModal(c);
-            }
+            // OPSI Button (Tactical Steel & Gold Plaque on Right)
+            drawThemedPlaque(c, rectSettingBtn, "⚙ OPSI", settingBgPaint, settingPressed);
         }
 
-        private void drawSettingButton(Canvas c) {
-            c.drawRoundRect(rectSettingBtn, 12f, 12f, settingBtnPaint);
-            c.drawRoundRect(rectSettingBtn, 12f, 12f, settingBorderPaint);
-            float textY = rectSettingBtn.centerY() + (textPaint.getTextSize() / 3f);
-            c.drawText("⚙️ CHEAT", rectSettingBtn.centerX(), textY, textPaint);
-        }
+        private void drawThemedPlaque(Canvas c, RectF rect, String text, Paint bgPaint, boolean pressed) {
+            float r = 7f; // Tactical plaque rounded bevel
 
-        private void drawKeypad(Canvas c) {
-            for (VKey vk : vKeys) {
-                Paint p = vk.pressed ? keyPressedPaint : keyNormalPaint;
-                p.setColor(vk.pressed ? 0xFFE67E22 : vk.color);
-                c.drawRoundRect(vk.bounds, 8f, 8f, p);
-                c.drawRoundRect(vk.bounds, 8f, 8f, keyBorderPaint);
-                Paint tp = new Paint(textPaint);
-                tp.setColor(Color.WHITE);
-                tp.setTextSize(18f);
-                c.drawText(vk.label, vk.bounds.centerX(), vk.bounds.centerY() + 6f, tp);
+            // 1. Draw base plaque
+            c.drawRoundRect(rect, r, r, bgPaint);
+
+            // Pressed highlight overlay or top gloss
+            if (pressed) {
+                shineRect.set(rect);
+                shinePaint.setColor(0x44FFFFFF);
+                c.drawRoundRect(shineRect, r, r, shinePaint);
+                shinePaint.setColor(0x24FFFFFF);
+            } else {
+                // 2. Top gloss sheen on upper half
+                shineRect.set(rect.left + 2f, rect.top + 2f, rect.right - 2f, rect.centerY() - 1f);
+                c.drawRoundRect(shineRect, r - 2f, r - 2f, shinePaint);
             }
-        }
 
-        private void drawSettingModal(Canvas c) {
-            c.drawRect(0, 0, getWidth(), getHeight(), modalBgPaint);
-            c.drawRoundRect(rectModalBox, 20f, 20f, modalBoxPaint);
+            // 3. Inner border inset
+            innerRect.set(rect.left + 2.5f, rect.top + 2.5f, rect.right - 2.5f, rect.bottom - 2.5f);
+            c.drawRoundRect(innerRect, r - 1f, r - 1f, innerGoldBorderPaint);
 
-            Paint hp = new Paint(textPaint);
-            hp.setTextSize(22f);
-            hp.setColor(0xFFF1C40F);
-            c.drawText("⚔️ ART OF WAR 2 - CHEAT & SETTING", rectModalBox.centerX(), rectModalBox.top + 34f, hp);
+            // 4. Outer tactical gold border
+            c.drawRoundRect(rect, r, r, outerGoldBorderPaint);
 
-            drawModalItem(c, rectCheatMoney, "💰 TAMBAH KREDIT (+10,000 DANA)", 0xFF27AE60);
-            drawModalItem(c, rectCheatGod, "🛡️ PASUKAN KEBAL (GOD MODE)", 0xFF2980B9);
-            drawModalItem(c, rectCheatMap, "🗺️ BUKA SELURUH MAP (FOG OF WAR)", 0xFF8E44AD);
-            drawModalItem(c, rectCheatWin, "🏆 MENANG MISI INSTAN (AUTO WIN)", 0xFFD35400);
-            drawModalItem(c, rectToggleKeypad, "⌨️ KEYPAD VIRTUAL: " + (showVirtualKeypad ? "AKTIF" : "NONAKTIF"), 0xFF34495E);
+            // 5. Corner decorative gold rivets (studs)
+            float rivetOffset = 5.5f;
+            float rivetRad = 1.6f;
+            c.drawCircle(rect.left + rivetOffset, rect.top + rivetOffset, rivetRad, rivetPaint);
+            c.drawCircle(rect.right - rivetOffset, rect.top + rivetOffset, rivetRad, rivetPaint);
+            c.drawCircle(rect.left + rivetOffset, rect.bottom - rivetOffset, rivetRad, rivetPaint);
+            c.drawCircle(rect.right - rivetOffset, rect.bottom - rivetOffset, rivetRad, rivetPaint);
 
-            int curFps = javax.microedition.lcdui.Canvas.targetFps;
-            drawModalItem(c, rectFpsCycle, "🎯 FPS LOCK: " + curFps + " FPS (" + javax.microedition.lcdui.Canvas.getFpsDescription() + ")", 0xFF16A085);
-            drawModalItem(c, rectOrientationCycle, "🔄 ORIENTASI: " + activity.getOrientationDescription(), 0xFF2C3E50);
-            drawModalItem(c, rectToggleStretch, "📺 TAMPILAN: " + (displayMode == 1 ? "FULLSCREEN (STRETCH)" : "FIT ASPECT RATIO"), 0xFF2C3E50);
-            drawModalItem(c, rectToggleBtnVisibility, "👁️ TOMBOL FLOATING: " + (hideFloatingBtn ? "DISEMBUNYIKAN (Back)" : "TAMPIL"), 0xFF2C3E50);
-
-            Paint closePaint = new Paint(modalItemPaint);
-            closePaint.setColor(0xFFC0392B);
-            c.drawRoundRect(rectModalClose, 12f, 12f, closePaint);
-            Paint closeTextPaint = new Paint(textPaint);
-            closeTextPaint.setColor(Color.WHITE);
-            c.drawText("LANJUTKAN PERANG", rectModalClose.centerX(), rectModalClose.centerY() + (closeTextPaint.getTextSize() / 3f), closeTextPaint);
-        }
-
-        private void drawModalItem(Canvas c, RectF r, String text, int color) {
-            Paint p = new Paint(modalItemPaint);
-            p.setColor(color);
-            c.drawRoundRect(r, 12f, 12f, p);
-            Paint itemTextPaint = new Paint(textPaint);
-            itemTextPaint.setColor(Color.WHITE);
-            c.drawText(text, r.centerX(), r.centerY() + (itemTextPaint.getTextSize() / 3f), itemTextPaint);
-        }
-
-        private void drawToast(Canvas c, String msg) {
-            Paint toastText = new Paint(textPaint);
-            toastText.setColor(Color.WHITE);
-            float tw = toastText.measureText(msg) + 50f;
-            float th = 44f;
-            float tx = (getWidth() - tw) / 2f;
-            float ty = getHeight() - th - 30f;
-            RectF r = new RectF(tx, ty, tx + tw, ty + th);
-            c.drawRoundRect(r, 20f, 20f, toastBgPaint);
-            c.drawText(msg, r.centerX(), r.centerY() + 7f, toastText);
-        }
-
-        private void dispatchCheatSequence(final int[] sequence, final String successMsg) {
-            showToast(successMsg);
-            new Thread(new Runnable() {
-                @Override
-                public void run() {
-                    javax.microedition.lcdui.Canvas c = javax.microedition.lcdui.Canvas.currentInstance;
-                    if (c == null) return;
-                    for (int key : sequence) {
-                        try {
-                            c.keyPressed(key);
-                            Thread.sleep(40);
-                            c.keyReleased(key);
-                            Thread.sleep(40);
-                        } catch (InterruptedException ignored) {}
-                    }
-                }
-            }).start();
+            // 6. Ancient carved / embossed text
+            float ty = rect.centerY() - ((textPaint.descent() + textPaint.ascent()) / 2f);
+            c.drawText(text, rect.centerX(), ty, textPaint);
         }
 
         @Override
@@ -703,98 +678,95 @@ public class MainActivity extends Activity {
             float tx = event.getX(pointerIndex);
             float ty = event.getY(pointerIndex);
 
-            // Handle touch inside In-Game Setting Modal
-            if (showSettingModal) {
+            // Check Floating Buttons (Left: CHEAT, Right: OPSI) with generous touch padding (+10px)
+            boolean inCheat = (tx >= rectCheatBtn.left - 10f && tx <= rectCheatBtn.right + 10f &&
+                               ty >= rectCheatBtn.top - 10f && ty <= rectCheatBtn.bottom + 10f);
+            boolean inSetting = (tx >= rectSettingBtn.left - 10f && tx <= rectSettingBtn.right + 10f &&
+                                 ty >= rectSettingBtn.top - 10f && ty <= rectSettingBtn.bottom + 10f);
+
+            if (inCheat) {
                 if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
-                    if (rectCheatMoney.contains(tx, ty)) {
-                        dispatchCheatSequence(new int[]{51, 55, 55, 57, 55}, "💰 CHEAT DANA (+10,000 KREDIT) DIAKTIFKAN!");
-                    } else if (rectCheatGod.contains(tx, ty)) {
-                        dispatchCheatSequence(new int[]{51, 55, 55, 57, 49}, "🛡️ GOD MODE (PASUKAN KEBAL) DIAKTIFKAN!");
-                    } else if (rectCheatMap.contains(tx, ty)) {
-                        dispatchCheatSequence(new int[]{51, 55, 55, 57, 51}, "🗺️ SELURUH MAP TERBUKA (FOG OF WAR REMOVED)!");
-                    } else if (rectCheatWin.contains(tx, ty)) {
-                        dispatchCheatSequence(new int[]{51, 55, 55, 57, 57}, "🏆 MENANG MISI INSTAN!");
-                    } else if (rectToggleKeypad.contains(tx, ty)) {
-                        showVirtualKeypad = !showVirtualKeypad;
-                        showToast(showVirtualKeypad ? "KEYPAD VIRTUAL DIAKTIFKAN" : "KEYPAD VIRTUAL DISEMBUNYIKAN");
-                    } else if (rectFpsCycle.contains(tx, ty)) {
-                        int nextFps = javax.microedition.lcdui.Canvas.cycleFps();
-                        showToast("FPS DIKUNCI: " + nextFps + " FPS");
-                    } else if (rectOrientationCycle.contains(tx, ty)) {
-                        activity.cycleOrientation();
-                        showToast("ORIENTASI: " + activity.getOrientationDescription());
-                    } else if (rectToggleStretch.contains(tx, ty)) {
-                        displayMode = (displayMode == 1) ? 0 : 1;
-                        layoutControls(getWidth(), getHeight());
-                        showToast(displayMode == 1 ? "TAMPILAN: FULLSCREEN STRETCH" : "TAMPILAN: FIT ASPECT RATIO");
-                    } else if (rectToggleBtnVisibility.contains(tx, ty)) {
-                        hideFloatingBtn = !hideFloatingBtn;
-                        showToast(hideFloatingBtn ? "TOMBOL DISEMBUNYIKAN (Buka via Tombol Back)" : "TOMBOL CHEAT DITAMPILKAN");
-                    } else if (rectModalClose.contains(tx, ty) || !rectModalBox.contains(tx, ty)) {
-                        showSettingModal = false;
-                        vibrate(20);
+                    cheatPressed = true;
+                    vibrate(20);
+                    activity.showCheatDialog();
+                } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP || action == MotionEvent.ACTION_CANCEL) {
+                    cheatPressed = false;
+                }
+                return true;
+            } else {
+                cheatPressed = false;
+            }
+
+            if (inSetting) {
+                if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
+                    settingPressed = true;
+                    vibrate(20);
+                    activity.showMenuDialog();
+                } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP || action == MotionEvent.ACTION_CANCEL) {
+                    settingPressed = false;
+                }
+                return true;
+            } else {
+                settingPressed = false;
+            }
+
+            // Direct game screen touch pass-through mapped 1:1 to 240x320
+            javax.microedition.lcdui.Canvas c = javax.microedition.lcdui.Canvas.currentInstance;
+            if (c != null) {
+                if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
+                    if (rectGame.contains(tx, ty)) {
+                        gameTouchPointerId = pointerId;
+                        float rx = (tx - rectGame.left) * 240f / rectGame.width();
+                        float ry = (ty - rectGame.top) * 320f / rectGame.height();
+                        int gx = Math.max(0, Math.min(239, (int) rx));
+                        int gy = Math.max(0, Math.min(319, (int) ry));
+
+                        // Send native touch to engine
+                        c.pointerPressed(gx, gy);
+
+                        // Smart touch navigation for prompts and softkeys:
+                        if (gy > 280) {
+                            if (gx < 80) {
+                                // Bottom-left softkey (LSK) / Menu
+                                activity.sendKeyToGame(-6, true);
+                                activity.sendKeyToGame(-6, false);
+                                vibrate(15);
+                            } else if (gx > 160) {
+                                // Bottom-right softkey (RSK) / Batal / Back
+                                activity.sendKeyToGame(-7, true);
+                                activity.sendKeyToGame(-7, false);
+                                vibrate(15);
+                            }
+                        } else if (gy >= 220 && gy <= 280 && gx >= 50 && gx <= 190) {
+                            // Center prompt confirmation zone -> Key 5 / Fire
+                            activity.sendKeyToGame(53, true);
+                            activity.sendKeyToGame(53, false);
+                            vibrate(15);
+                        }
                     }
-                }
-                return true;
-            }
-
-            // Floating button touch
-            if (!hideFloatingBtn && rectSettingBtn.contains(tx, ty)) {
-                if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
-                    openSettingModal();
-                }
-                return true;
-            }
-
-            // Virtual Keypad touch handling
-            if (showVirtualKeypad) {
-                if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
-                    for (VKey vk : vKeys) {
-                        if (vk.bounds.contains(tx, ty)) {
-                            vk.pressed = true;
-                            activeVKeyPointers.put(pointerId, vk);
-                            activity.sendKeyToGame(vk.keyCode, true);
-                            vibrate(20);
-                            return true;
+                } else if (action == MotionEvent.ACTION_MOVE) {
+                    if (gameTouchPointerId != -1) {
+                        int idx = event.findPointerIndex(gameTouchPointerId);
+                        if (idx >= 0) {
+                            float rx = (event.getX(idx) - rectGame.left) * 240f / rectGame.width();
+                            float ry = (event.getY(idx) - rectGame.top) * 320f / rectGame.height();
+                            int gx = Math.max(0, Math.min(239, (int) rx));
+                            int gy = Math.max(0, Math.min(319, (int) ry));
+                            c.pointerDragged(gx, gy);
                         }
                     }
                 } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP) {
-                    VKey vk = activeVKeyPointers.remove(pointerId);
-                    if (vk != null) {
-                        vk.pressed = false;
-                        activity.sendKeyToGame(vk.keyCode, false);
-                        return true;
-                    }
-                }
-            }
-
-            // Direct game screen touch pass-through mapped to 240x800
-            if (rectGame.contains(tx, ty)) {
-                float rx = (tx - rectGame.left) * 240f / rectGame.width();
-                float ry = (ty - rectGame.top) * 800f / rectGame.height();
-
-                int gx = Math.max(0, Math.min(239, (int) rx));
-                int gy = Math.max(0, Math.min(799, (int) ry));
-
-                javax.microedition.lcdui.Canvas c = javax.microedition.lcdui.Canvas.currentInstance;
-                if (c != null) {
-                    if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
-                        c.pointerPressed(gx, gy);
-                    } else if (action == MotionEvent.ACTION_MOVE) {
-                        for (int i = 0; i < event.getPointerCount(); i++) {
-                            float px = event.getX(i);
-                            float py = event.getY(i);
-                            if (rectGame.contains(px, py)) {
-                                float prx = (px - rectGame.left) * 480f / rectGame.width();
-                                float pry = (py - rectGame.top) * 800f / rectGame.height();
-                                int pgx = Math.max(0, Math.min(479, (int) prx));
-                                int pgy = Math.max(0, Math.min(799, (int) pry));
-                                c.pointerDragged(pgx, pgy);
-                            }
-                        }
-                    } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_POINTER_UP) {
+                    if (pointerId == gameTouchPointerId || action == MotionEvent.ACTION_UP) {
+                        gameTouchPointerId = -1;
+                        float rx = (tx - rectGame.left) * 240f / rectGame.width();
+                        float ry = (ty - rectGame.top) * 320f / rectGame.height();
+                        int gx = Math.max(0, Math.min(239, (int) rx));
+                        int gy = Math.max(0, Math.min(319, (int) ry));
                         c.pointerReleased(gx, gy);
                     }
+                } else if (action == MotionEvent.ACTION_CANCEL) {
+                    gameTouchPointerId = -1;
+                    c.pointerReleased(0, 0);
                 }
             }
 

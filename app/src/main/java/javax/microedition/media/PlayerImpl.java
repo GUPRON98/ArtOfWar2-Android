@@ -70,7 +70,7 @@ public class PlayerImpl implements Player, VolumeControl {
 
             File cacheDir = ResourceLoader.appContext != null ? 
                 ResourceLoader.appContext.getCacheDir() : 
-                new File("/data/data/com.gameloft.spiderman.ultimatepower/cache");
+                new File("/data/data/com.herocraft.artofwar2/cache");
             cacheDir.mkdirs();
             if (tempMidiFile == null) {
                 tempMidiFile = new File(cacheDir, "current_audio.mid");

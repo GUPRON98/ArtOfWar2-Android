@@ -15,11 +15,11 @@ public abstract class Displayable {
     }
 
     public int getWidth() {
-        return 800;
+        return 240;
     }
 
     public int getHeight() {
-        return 480;
+        return 320;
     }
 
     public String getTitle() {

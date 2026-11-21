@@ -4224,39 +4224,8 @@
 .end method
 
 .method private static final s()V
-    .locals 3
+    .locals 1
 
-    sget v0, Lk;->o:I
-
-    const/4 v1, 0x1
-
-    if-ne v0, v1, :cond_0
-
-    sget v0, Lk;->t:I
-
-    sget v2, Lk;->u:I
-
-    if-gt v0, v2, :cond_1
-
-    :cond_0
-    sget v0, Lk;->o:I
-
-    const/4 v2, 0x2
-
-    if-ne v0, v2, :cond_2
-
-    sget v0, Lk;->u:I
-
-    sget v2, Lk;->t:I
-
-    if-le v0, v2, :cond_2
-
-    :cond_1
-    sput-boolean v1, Lk;->k:Z
-
-    return-void
-
-    :cond_2
     const/4 v0, 0x0
 
     sput-boolean v0, Lk;->k:Z
@@ -4500,11 +4469,7 @@
     return-void
 
     :cond_0
-    sget-boolean v0, Lk;->k:Z
-
-    const/4 v1, 0x3
-
-    if-eqz v0, :cond_1
+    goto :cond_1
 
     :try_start_1
     sget v0, Lk;->t:I
@@ -5018,12 +4983,18 @@
 
     const/4 v1, -0x1
 
-    if-eq v0, v1, :cond_0
+    if-ne v0, v1, :cond_check_x
 
+    return-void
+
+    :cond_check_x
     iget v0, p0, Lk;->r:I
 
-    if-eq v0, v1, :cond_0
+    if-ne v0, v1, :cond_check_diff
 
+    return-void
+
+    :cond_check_diff
     iget v0, p0, Lk;->q:I
 
     sub-int v0, p1, v0
@@ -5032,10 +5003,13 @@
 
     move-result v0
 
-    const/16 v1, 0xa
+    const/4 v1, 0x4
 
-    if-gt v0, v1, :cond_0
+    if-le v0, v1, :cond_check_y
 
+    goto :do_drag
+
+    :cond_check_y
     iget v0, p0, Lk;->r:I
 
     sub-int v0, p2, v0
@@ -5044,9 +5018,12 @@
 
     move-result v0
 
-    if-le v0, v1, :cond_1
+    if-gt v0, v1, :cond_do_drag
 
-    :cond_0
+    return-void
+
+    :cond_do_drag
+    :do_drag
     const/4 v0, 0x2
 
     invoke-direct {p0, p1, p2, v0}, Lk;->a(III)V
@@ -5055,7 +5032,6 @@
 
     iput p2, p0, Lk;->r:I
 
-    :cond_1
     return-void
 .end method
 
