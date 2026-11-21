@@ -4469,6 +4469,8 @@
     return-void
 
     :cond_0
+    const/4 v1, 0x3
+
     goto :cond_1
 
     :try_start_1
@@ -4492,6 +4494,8 @@
 
     shr-int/lit8 v2, v4, 0x1
 
+    const/4 v1, 0x3
+
     invoke-virtual {p1, v3, v0, v2, v1}, Ljavax/microedition/lcdui/Graphics;->drawImage(Ljavax/microedition/lcdui/Image;III)V
     :try_end_1
     .catchall {:try_start_1 .. :try_end_1} :catchall_1
@@ -4504,6 +4508,8 @@
     return-void
 
     :cond_1
+    const/4 v1, 0x3
+
     iget-byte v0, p0, Lk;->i:B
 
     const/4 v4, -0x1
@@ -4544,6 +4550,8 @@
     sget v4, Lk;->u:I
 
     shr-int/lit8 v2, v4, 0x1
+
+    const/4 v1, 0x3
 
     invoke-virtual {p1, v0, v3, v2, v1}, Ljavax/microedition/lcdui/Graphics;->drawImage(Ljavax/microedition/lcdui/Image;III)V
 

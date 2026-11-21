@@ -290,6 +290,10 @@ public class Graphics {
         int drawX = x + transX;
         int drawY = y + transY;
 
+        if (anchor < 0) {
+            anchor = HCENTER | VCENTER;
+        }
+
         if ((anchor & HCENTER) != 0) drawX -= b.getWidth() / 2;
         else if ((anchor & RIGHT) != 0) drawX -= b.getWidth();
 
@@ -323,6 +327,10 @@ public class Graphics {
         if (transform == 5 || transform == 6 || transform == 7 || transform == 4) {
             outW = height;
             outH = width;
+        }
+
+        if (anchor < 0) {
+            anchor = HCENTER | VCENTER;
         }
 
         if ((anchor & HCENTER) != 0) destX -= outW / 2;

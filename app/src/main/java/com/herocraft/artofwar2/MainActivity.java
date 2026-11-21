@@ -724,7 +724,7 @@ public class MainActivity extends Activity {
                         // Send native touch to engine
                         c.pointerPressed(gx, gy);
 
-                        // Smart touch navigation for prompts and softkeys:
+                        // Smart touch navigation for bottom softkeys:
                         if (gy > 280) {
                             if (gx < 80) {
                                 // Bottom-left softkey (LSK) / Menu
@@ -737,11 +737,6 @@ public class MainActivity extends Activity {
                                 activity.sendKeyToGame(-7, false);
                                 vibrate(15);
                             }
-                        } else if (gy >= 220 && gy <= 280 && gx >= 50 && gx <= 190) {
-                            // Center prompt confirmation zone -> Key 5 / Fire
-                            activity.sendKeyToGame(53, true);
-                            activity.sendKeyToGame(53, false);
-                            vibrate(15);
                         }
                     }
                 } else if (action == MotionEvent.ACTION_MOVE) {
