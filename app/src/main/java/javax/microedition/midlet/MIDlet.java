@@ -37,7 +37,6 @@ public abstract class MIDlet {
     }
 
     public String getAppProperty(String key) {
-        String val = appProperties.get(key);
-        return val != null ? val : "";
+        return appProperties.get(key);
     }
 }

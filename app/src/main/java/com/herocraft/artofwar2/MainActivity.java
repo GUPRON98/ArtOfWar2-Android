@@ -454,8 +454,8 @@ public class MainActivity extends Activity {
         public void layoutControls(int w, int h) {
             if (w <= 0 || h <= 0) return;
 
-            // Native Samsung S8000 Portrait: 480x800
-            float baseW = 480f;
+            // Native Samsung S8000 Portrait: 240x800
+            float baseW = 240f;
             float baseH = 800f;
 
             if (displayMode == 1) {
@@ -768,12 +768,12 @@ public class MainActivity extends Activity {
                 }
             }
 
-            // Direct game screen touch pass-through mapped to 480x800
+            // Direct game screen touch pass-through mapped to 240x800
             if (rectGame.contains(tx, ty)) {
-                float rx = (tx - rectGame.left) * 480f / rectGame.width();
+                float rx = (tx - rectGame.left) * 240f / rectGame.width();
                 float ry = (ty - rectGame.top) * 800f / rectGame.height();
 
-                int gx = Math.max(0, Math.min(479, (int) rx));
+                int gx = Math.max(0, Math.min(239, (int) rx));
                 int gy = Math.max(0, Math.min(799, (int) ry));
 
                 javax.microedition.lcdui.Canvas c = javax.microedition.lcdui.Canvas.currentInstance;

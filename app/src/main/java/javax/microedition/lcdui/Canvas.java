@@ -59,9 +59,9 @@ public abstract class Canvas extends Displayable {
     }
 
     static {
-        // Sony Ericsson X1i WVGA 480x800 Double Buffered
-        frontBitmap = Bitmap.createBitmap(480, 800, Bitmap.Config.ARGB_8888);
-        backBitmap = Bitmap.createBitmap(480, 800, Bitmap.Config.ARGB_8888);
+        // Native Samsung S8000 Portrait Engine: 240x800 Double Buffered
+        frontBitmap = Bitmap.createBitmap(240, 800, Bitmap.Config.ARGB_8888);
+        backBitmap = Bitmap.createBitmap(240, 800, Bitmap.Config.ARGB_8888);
         displayBitmap = frontBitmap;
         displayGraphics = new Graphics(backBitmap);
     }
@@ -127,7 +127,7 @@ public abstract class Canvas extends Displayable {
     }
 
     public int getWidth() {
-        return 480;
+        return 240;
     }
 
     public int getHeight() {
@@ -145,11 +145,14 @@ public abstract class Canvas extends Displayable {
     public void setFullScreenMode(boolean mode) {}
 
     public void repaint() {
-        serviceRepaints();
+        // In J2ME Canvas, repaint() requests an asynchronous repaint.
+        // In this game engine, q.h() explicitly calls repaint() immediately followed by serviceRepaints().
+        // If repaint() immediately executed serviceRepaints, serviceRepaints would run twice per tick.
+        // On the 2nd run, the game's dirty check (q.a) would be false and do nothing,
+        // causing serviceRepaints to swap an unrendered blank buffer into frontBitmap!
     }
 
     public void repaint(int x, int y, int width, int height) {
-        serviceRepaints();
     }
 
     public void serviceRepaints() {

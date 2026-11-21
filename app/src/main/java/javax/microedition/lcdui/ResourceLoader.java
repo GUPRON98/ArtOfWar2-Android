@@ -23,7 +23,7 @@ public class ResourceLoader {
             } catch (IOException ignored) {}
         }
         if (is == null) {
-            File f = new File("/data/data/com.termux/files/home/ZombieInfection-Android/app/src/main/assets/" + path);
+            File f = new File("/data/data/com.termux/files/home/ArtOfWar2-Android/app/src/main/assets/" + path);
             if (f.exists()) {
                 try {
                     is = new FileInputStream(f);
